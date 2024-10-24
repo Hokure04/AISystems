@@ -3,7 +3,6 @@ import pandas as pd
 from prettytable import PrettyTable
 from calculation import calculating_dataset_characteristics, min_max_normalize, z_normalize, calc_mean
 
-
 def preprocess_data(file_path):
     df = pd.read_csv(file_path)
     # print(df)
