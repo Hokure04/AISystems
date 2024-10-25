@@ -63,9 +63,6 @@ def show_statistics_and_plots(df):
             '75-й квантиль': q75
         }
 
-        # for stat, value in statistics[column].items():
-        #     print(f"{stat}: {value}")
-
         plt.figure(figsize=(8, 4))
         plt.hist(df[column], bins=20, color='skyblue', edgecolor='black')
         plt.title(f'Гистограмма для признака: {column}')
