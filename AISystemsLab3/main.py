@@ -6,22 +6,22 @@ from itertools import combinations
 
 def preprocess_data(file_path):
     df = pd.read_csv(file_path)
-    # print(df)
     df['Extracurricular Activities'] = df['Extracurricular Activities'].map(
-        {'Yes': 1, 'No': 0})  # кодирование категориальных признаков
-
-    df = df.apply(pd.to_numeric, errors='coerce')
+        {'Yes': 1, 'No': 0})  # кодирование категориального признака
     df.fillna(0, inplace=True)  # на место пропуска вставляем 0
-    df['Effective Practice'] = (df['Hours Studied']*df['Sample Question Papers Practiced']) / df['Sleep Hours']
+    df['Effective Practice'] = (df['Hours Studied'] * df['Previous Scores']) / df['Sleep Hours']  # введение синтетического признака Эффективная подготовка
+    df.drop(columns=['Previous Scores'], inplace=True)
+
     return df
 
 
 def linear_regression(x, y):
     x = np.column_stack((np.ones(x.shape[0]), x))
     x_transpose = x.T
-    beta = np.linalg.inv(x_transpose.dot(x)).dot(x_transpose).dot(y)
+    beta = np.linalg.inv(x_transpose.dot(x)).dot(x_transpose).dot(y) # (X^T * X)^(-1) * X^T * y
     return beta
 
+# predict = beta0 + beta1*x1 + ... betan*xn
 def predict(x, beta):
     x = np.column_stack((np.ones(x.shape[0]), x))
     return x.dot(beta)
@@ -31,37 +31,37 @@ def calc_mse(y, y_pred):
 
 def calc_r2(df, dependent_column, best_models):
     r2_values = []
-    for feature, _ in best_models:
-        x = df[feature].values
+    for characteristic, _ in best_models:
+        x = df[characteristic].values
         y = df[dependent_column].values
         beta = linear_regression(x,y)
         y_pred = predict(x, beta)
-        ss_residual = np.sum((y - y_pred) ** 2)
-        ss_total = np.sum((y - calc_mean(y)) ** 2)
-        r2 = 1 - (ss_residual / ss_total)
+        numerator = np.sum((y - y_pred) ** 2)
+        denominator = np.sum((y - calc_mean(y)) ** 2)
+        r2 = 1 - (numerator / denominator)  # r2 = 1 - (sum(y - y_pred)**2/sum(y - y_mean)**2)
         r2_values.append(r2)
     return r2_values
 
-
-def k_fold_cross_validation(df, k, feature_column, dependent_column):
-    df = df.sample(frac=1).reset_index(drop=True)
+# фолд - это часть на которую разбивается датасет
+def k_fold_cross_validation(df, k, characteristic_column, dependent_column):
+    df = df.sample(frac=1).reset_index(drop=True) # перемешиваем данные, сбрасываем старые данные
     fold_size = len(df)//k
     folds = []
 
     for i in range(k):
         start = i*fold_size
         end = start + fold_size
-        folds.append(df.iloc[start:end])
+        folds.append(df.iloc[start:end]) # делаем срез
 
     mse_values = []
 
     for i in range(k):
         test_data = folds[i]
         train_data = pd.concat([folds[j] for j in range(k) if j != i])
-        x_train = train_data[feature_column].values
+        x_train = train_data[characteristic_column].values
         y_train = train_data[dependent_column].values
 
-        x_test = test_data[feature_column].values
+        x_test = test_data[characteristic_column].values
         y_test = test_data[dependent_column].values
 
         beta = linear_regression(x_train, y_train)
@@ -73,17 +73,17 @@ def k_fold_cross_validation(df, k, feature_column, dependent_column):
 
 
 def build_models(df, dependent_column, k):
-    remaining_features = list(df.columns)
-    remaining_features.remove(dependent_column)
+    characteristic = list(df.columns)
+    characteristic.remove(dependent_column)
     all_combinations = []
-    for r in range(1, len(remaining_features)+1):
-        feature_combinations = combinations(remaining_features, r)
-        all_combinations.extend(feature_combinations)
+    for r in range(1, len(characteristic)+1):
+        characteristic_combinations = combinations(characteristic, r)
+        all_combinations.extend(characteristic_combinations)
 
     models = []
     for model in all_combinations:
         mse = k_fold_cross_validation(df, k, list(model), dependent_column)
-        print(f"Используемые признаки: {list(model)}, MSE: {mse}")
+        #print(f"Используемые признаки: {list(model)}, MSE: {mse}")
         models.append((list(model), mse))
 
     models.sort(key=lambda x: x[1])
@@ -92,6 +92,7 @@ def build_models(df, dependent_column, k):
 
 def main():
     df = preprocess_data('Student_Performance.csv')
+    show_statistics_and_plots(df)
     print("Рассчёт изначальных значений набора данных:")
     showing_table(df)
     print("Матрица корреляции:")
@@ -99,7 +100,9 @@ def main():
 
     while True:
         try:
-            choice_normalization_type = int(input("Выберите тип нормализации (1: min-max, 2: z-ормализация): "))
+            print("1. Min-max нормализация")
+            print("2. Z-нормализация")
+            choice_normalization_type = int(input("Выберите тип нормализации 1 или 2: "))
             if choice_normalization_type == 1 or choice_normalization_type == 2:
                 break
             else:
@@ -120,15 +123,14 @@ def main():
 
     while True:
         try:
-            k = int(input("Введите количество фолдов: "))
+            k = int(input("Введите количество фолдов для K-fold кросс валидации: "))
             if k > 1:
                 break
             else:
-                print("Количество фолдов должно быть больше 1")
+                print("Количество фолдов должно быть не менее 2")
         except ValueError:
-            print("Ошибка: введите целое число фолдов")
+            print("Ошибка: вы ввели недопустимое значение")
 
-    print("Построение трёх моделей")
     best_models = build_models(df, dependent_column='Performance Index', k=k)
     r2_values = calc_r2(df, 'Performance Index', best_models)
     print("Лучшие модели с различными наборами признаков: ")

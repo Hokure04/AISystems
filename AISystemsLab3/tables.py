@@ -1,5 +1,6 @@
 from calculation import calculating_dataset_characteristics
 from prettytable import PrettyTable
+import matplotlib.pyplot as plt
 
 def show_correlation_matrix(df):
     corr_matrix = df.corr()
@@ -43,3 +44,33 @@ def showing_table(df):
         table.add_row([characteristic] + value)
 
     print(table)
+
+
+def show_statistics_and_plots(df):
+    statistics = {}
+    for column in df.columns:
+        count, mean, variance, std_dev, min_val, max_val, q25, q50, q75 = calculating_dataset_characteristics(
+            df[column])
+        statistics[column] = {
+            'Количество': count,
+            'Среднее': mean,
+            'Дисперсия': variance,
+            'Стандартное отклонение': std_dev,
+            'Минимум': min_val,
+            'Максимум': max_val,
+            '25-й квантиль': q25,
+            'Медиана (50-й квантиль)': q50,
+            '75-й квантиль': q75
+        }
+
+        # for stat, value in statistics[column].items():
+        #     print(f"{stat}: {value}")
+
+        plt.figure(figsize=(8, 4))
+        plt.hist(df[column], bins=20, color='skyblue', edgecolor='black')
+        plt.title(f'Гистограмма для признака: {column}')
+        plt.xlabel(column)
+        plt.ylabel('Частота')
+        plt.show()
+
+    return statistics
