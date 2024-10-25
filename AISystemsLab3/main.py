@@ -1,7 +1,8 @@
 import numpy as np
 import pandas as pd
-from prettytable import PrettyTable
-from calculation import calculating_dataset_characteristics, min_max_normalize, z_normalize, calc_mean
+from calculation import min_max_normalize, z_normalize, calc_mean
+from tables import *
+from itertools import combinations
 
 def preprocess_data(file_path):
     df = pd.read_csv(file_path)
@@ -11,7 +12,9 @@ def preprocess_data(file_path):
 
     df = df.apply(pd.to_numeric, errors='coerce')
     df.fillna(0, inplace=True)  # на место пропуска вставляем 0
+    df['Effective Practice'] = (df['Hours Studied']*df['Sample Question Papers Practiced']) / df['Sleep Hours']
     return df
+
 
 def linear_regression(x, y):
     x = np.column_stack((np.ones(x.shape[0]), x))
@@ -26,18 +29,21 @@ def predict(x, beta):
 def calc_mse(y, y_pred):
     return calc_mean((y - y_pred) ** 2)
 
-def show_correlation_matrix(df):
-    corr_matrix = df.corr()
-    table = PrettyTable()
-    columns = [" "] + list(corr_matrix.columns)
-    table.field_names = columns
+def calc_r2(df, dependent_column, best_models):
+    r2_values = []
+    for feature, _ in best_models:
+        x = df[feature].values
+        y = df[dependent_column].values
+        beta = linear_regression(x,y)
+        y_pred = predict(x, beta)
+        ss_residual = np.sum((y - y_pred) ** 2)
+        ss_total = np.sum((y - calc_mean(y)) ** 2)
+        r2 = 1 - (ss_residual / ss_total)
+        r2_values.append(r2)
+    return r2_values
 
-    for row in corr_matrix.index:
-        table.add_row([row] + list(corr_matrix.loc[row]))
-    print("Корреляционная матрица:")
-    print(table)
 
-def k_fold_cross_validation(df, k, dependent_column):
+def k_fold_cross_validation(df, k, feature_column, dependent_column):
     df = df.sample(frac=1).reset_index(drop=True)
     fold_size = len(df)//k
     folds = []
@@ -48,60 +54,47 @@ def k_fold_cross_validation(df, k, dependent_column):
         folds.append(df.iloc[start:end])
 
     mse_values = []
+
     for i in range(k):
         test_data = folds[i]
         train_data = pd.concat([folds[j] for j in range(k) if j != i])
-        x_train = train_data.drop(columns=[dependent_column]).values
+        x_train = train_data[feature_column].values
         y_train = train_data[dependent_column].values
 
-        x_test = test_data.drop(columns=[dependent_column]).values
+        x_test = test_data[feature_column].values
         y_test = test_data[dependent_column].values
 
         beta = linear_regression(x_train, y_train)
         y_pred = predict(x_test, beta)
         mse = calc_mse(y_test, y_pred)
         mse_values.append(mse)
-        print(f"Фолд {i+1}, MSE: {mse}")
 
-    print(f"Средняя MSE по всем фолдам: {calc_mean(mse_values)}")
+    return calc_mean(mse_values)
 
 
-def showing_table(df):
-    table = PrettyTable()
-    table.field_names = ["Характеристика"] + list(df.columns)
-    stats = {
-        "Count": [],
-        "Mean": [],
-        "Variance": [],
-        "Standard Deviation": [],
-        "Min value": [],
-        "0.25 Quantile": [],
-        "0.5 Quantile": [],
-        "0.75 Quantile": [],
-        "Max value": []
-    }
-    for column in df.columns:
-       data = df[column]
-       count, mean, variance_val, std, min_value, max_value, quantile_25, quantile_50, quantile_75 = calculating_dataset_characteristics(data)
-       stats["Count"].append(count)
-       stats["Mean"].append(mean)
-       stats["Variance"].append(variance_val)
-       stats["Standard Deviation"].append(std)
-       stats["Min value"].append(min_value)
-       stats["0.25 Quantile"].append(quantile_25)
-       stats["0.5 Quantile"].append(quantile_50)
-       stats["0.75 Quantile"].append(quantile_75)
-       stats["Max value"].append(max_value)
+def build_models(df, dependent_column, k):
+    remaining_features = list(df.columns)
+    remaining_features.remove(dependent_column)
+    all_combinations = []
+    for r in range(1, len(remaining_features)+1):
+        feature_combinations = combinations(remaining_features, r)
+        all_combinations.extend(feature_combinations)
 
-    for characteristic, value in stats.items():
-        table.add_row([characteristic] + value)
+    models = []
+    for model in all_combinations:
+        mse = k_fold_cross_validation(df, k, list(model), dependent_column)
+        print(f"Используемые признаки: {list(model)}, MSE: {mse}")
+        models.append((list(model), mse))
 
-    print(table)
+    models.sort(key=lambda x: x[1])
+    best_models = models[:3]
+    return best_models
 
 def main():
     df = preprocess_data('Student_Performance.csv')
-    showing_table(df)
     print("Рассчёт изначальных значений набора данных:")
+    showing_table(df)
+    print("Матрица корреляции:")
     show_correlation_matrix(df)
 
     while True:
@@ -124,6 +117,7 @@ def main():
 
     print("Изменение характеристик после нормализации данных")
     showing_table(df)
+
     while True:
         try:
             k = int(input("Введите количество фолдов: "))
@@ -134,6 +128,11 @@ def main():
         except ValueError:
             print("Ошибка: введите целое число фолдов")
 
-    k_fold_cross_validation(df, k, dependent_column='Performance Index')
+    print("Построение трёх моделей")
+    best_models = build_models(df, dependent_column='Performance Index', k=k)
+    r2_values = calc_r2(df, 'Performance Index', best_models)
+    print("Лучшие модели с различными наборами признаков: ")
+    for i, (features, mse) in enumerate(best_models):
+        print(f"Модель {i+1}: Признаки: {features}, MSE: {mse}, R^2: {r2_values[i]}")
 
 main()
