@@ -1,0 +1,10 @@
+digraph {
+	0 [label="Feature 7 
+ Split value: None"]
+	0 -> "0-1" [label="Value: 1"]
+	"0-1" [label="Feature 3 
+ Split value: None"]
+	"0-1" -> "0-1-1" [label="Value: 1"]
+	"0-1-1" [label="Class 0 
+ Proportions: [1. 0.]" shape=ellipse]
+}
